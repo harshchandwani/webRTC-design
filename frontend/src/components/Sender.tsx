@@ -1,50 +1,51 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export const Sender = () => {
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [pc, setPC] = useState<RTCPeerConnection | null>(null);
-  const videoContainer = useRef<HTMLDivElement>(null);
 
-  // Establish connection
   useEffect(() => {
     const socket = new WebSocket("ws://localhost:8080");
     setSocket(socket);
     socket.onopen = () => {
-      socket.send(JSON.stringify({ type: "sender" }));
+      socket.send(
+        JSON.stringify({
+          type: "sender",
+        })
+      );
     };
   }, []);
 
-  const intialConn = async () => {
+  const initiateConn = async () => {
     if (!socket) {
-      alert("No socket");
+      alert("Socket not found");
       return;
     }
 
-    // Create peer connection and set local description if message.open is 'createAnswer'
-    // else if message.open is 'iceCandidate' add ice candidate
     socket.onmessage = async event => {
       const message = JSON.parse(event.data);
       if (message.type === "createAnswer") {
-        await pc?.setRemoteDescription(message.sdp);
+        await pc.setRemoteDescription(message.sdp);
       } else if (message.type === "iceCandidate") {
-        pc?.addIceCandidate(message.candidate);
+        pc.addIceCandidate(message.candidate);
       }
     };
 
-    // Establishing a P2P connection
-    // Exchange the Ice Candidate [See the diagram for more information]
     const pc = new RTCPeerConnection();
     setPC(pc);
     pc.onicecandidate = event => {
       if (event.candidate) {
-        socket.send(
-          JSON.stringify({ type: "iceCandidate", candidate: event.candidate })
+        socket?.send(
+          JSON.stringify({
+            type: "iceCandidate",
+            candidate: event.candidate,
+          })
         );
       }
     };
 
-    // Sending Local Description on need (this is used when we share screen or something more)
     pc.onnegotiationneeded = async () => {
+      console.error("onnegotiateion needed");
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       socket?.send(
@@ -58,23 +59,26 @@ export const Sender = () => {
     getCameraStreamAndSend(pc);
   };
 
-  // Use useRef to append the video to the container
   const getCameraStreamAndSend = (pc: RTCPeerConnection) => {
     navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
       const video = document.createElement("video");
       video.srcObject = stream;
       video.play();
-      // Propagate via a component
-      videoContainer.current?.appendChild(video);
+      // this is wrong, should propogate via a component
+      document.body.appendChild(video);
       stream.getTracks().forEach(track => {
+        console.error("track added");
+        console.log(track);
+        console.log(pc);
         pc?.addTrack(track);
       });
     });
   };
+
   return (
     <div>
       Sender
-      <button onClick={intialConn}> Send data </button>
+      <button onClick={initiateConn}> Send data </button>
     </div>
   );
 };
